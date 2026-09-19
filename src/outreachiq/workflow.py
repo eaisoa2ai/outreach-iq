@@ -17,6 +17,9 @@ from outreachiq.agents.email_agent import build_email_agent, build_email_task
 from outreachiq.agents.insight_agent import build_insight_agent, build_insight_task
 from outreachiq.config import settings
 from outreachiq.models import CampaignState, CustomerContext
+from outreachiq.observability import get_tracer
+
+tracer = get_tracer()
 
 
 def build_llm() -> LLM:
@@ -36,18 +39,36 @@ def run_crew_for_campaign(campaign_id: str, context: CustomerContext) -> Campaig
     decision_agent = build_decision_agent(llm)
     email_agent = build_email_agent(llm)
 
-    insight_task = build_insight_task(insight_agent, context)
-    call_task = build_call_task(call_agent, context.profile, insight_task)
-    decision_task = build_decision_task(decision_agent, insight_task, call_task)
-    email_task = build_email_task(email_agent, context.profile, insight_task, decision_task)
+    with tracer.start_as_current_span("crew.kickoff") as span:
 
-    crew = Crew(
-        agents=[insight_agent, call_agent, decision_agent, email_agent],
-        tasks=[insight_task, call_task, decision_task, email_task],
-        process=Process.sequential,
-        verbose=True,
-    )
-    crew.kickoff()
+        def _stage_done(stage: str):
+            def _callback(_output):
+                span.add_event(f"{stage}.completed")
+
+            return _callback
+
+        insight_task = build_insight_task(insight_agent, context, on_complete=_stage_done("insight"))
+        call_task = build_call_task(
+            call_agent, context.profile, insight_task, on_complete=_stage_done("call")
+        )
+        decision_task = build_decision_task(
+            decision_agent, insight_task, call_task, on_complete=_stage_done("decision")
+        )
+        email_task = build_email_task(
+            email_agent,
+            context.profile,
+            insight_task,
+            decision_task,
+            on_complete=_stage_done("email"),
+        )
+
+        crew = Crew(
+            agents=[insight_agent, call_agent, decision_agent, email_agent],
+            tasks=[insight_task, call_task, decision_task, email_task],
+            process=Process.sequential,
+            verbose=True,
+        )
+        crew.kickoff()
 
     return CampaignState(
         campaign_id=campaign_id,

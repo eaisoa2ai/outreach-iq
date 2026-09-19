@@ -98,7 +98,7 @@ class EmailOutcome(AgentOutput):
 
     subject: str
     html_body: str
-    status: str  # "sent" | "failed" | "skipped"
+    status: str  # "sent" | "failed" | "skipped" | "blocked" (rejected by a content guardrail)
     provider_message_id: str | None = None
     sent_at: datetime | None = None
 

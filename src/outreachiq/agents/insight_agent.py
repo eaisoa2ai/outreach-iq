@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from crewai import LLM, Agent, Task
 
 from outreachiq.agents.prompts import INSIGHT_AGENT_BACKSTORY
@@ -18,7 +20,9 @@ def build_insight_agent(llm: LLM) -> Agent:
     )
 
 
-def build_insight_task(agent: Agent, context: CustomerContext) -> Task:
+def build_insight_task(
+    agent: Agent, context: CustomerContext, on_complete: Callable | None = None
+) -> Task:
     profile = context.profile
     engagement_lines = "\n".join(
         f"- {e.course_title} ({e.course_type}): {e.view_minutes:.0f} min"
@@ -55,4 +59,5 @@ must say so in warnings rather than inventing detail."""
         agent=agent,
         expected_output="A CallGuidance object with goal, key_points, open_question, and next_step.",
         output_pydantic=CallGuidance,
+        callback=on_complete,
     )

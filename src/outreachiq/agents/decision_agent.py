@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from crewai import LLM, Agent, Task
 
 from outreachiq.agents.prompts import DECISION_AGENT_BACKSTORY
@@ -19,7 +21,9 @@ def build_decision_agent(llm: LLM) -> Agent:
     )
 
 
-def build_decision_task(agent: Agent, insight_task: Task, call_task: Task) -> Task:
+def build_decision_task(
+    agent: Agent, insight_task: Task, call_task: Task, on_complete: Callable | None = None
+) -> Task:
     description = """Using the call initiation result from the previous task:
 
 1. If the call was skipped or failed to initiate, set outcome accordingly
@@ -43,4 +47,5 @@ error, not_attempted."""
         expected_output="A CallAnalysis with outcome, raw_status, transcript, and email_guidance.",
         output_pydantic=CallAnalysis,
         context=[insight_task, call_task],
+        callback=on_complete,
     )

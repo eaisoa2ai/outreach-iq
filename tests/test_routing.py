@@ -99,6 +99,41 @@ def test_failed_email_send_requires_review(sample_context):
     assert any("email" in r.lower() for r in result.review_reasons)
 
 
+def test_blocked_email_requires_review(sample_context):
+    state = _base_state(sample_context)
+    state.email_outcome = EmailOutcome(
+        confidence=0.9, reasoning_summary="ok", subject="Hi", html_body="<p>Hi</p>", status="blocked"
+    )
+
+    result = evaluate_routing(state, THRESHOLDS)
+
+    assert result.requires_human_review is True
+    assert any("status=blocked" in r for r in result.review_reasons)
+
+
+def test_email_referencing_uncompleted_call_requires_review(sample_context):
+    state = _base_state(sample_context)
+    state.call_analysis = CallAnalysis(
+        confidence=0.9,
+        reasoning_summary="ok",
+        outcome=CallOutcome.DID_NOT_PICK,
+        raw_status="initiated",
+        email_guidance="offer to reschedule",
+    )
+    state.email_outcome = EmailOutcome(
+        confidence=0.9,
+        reasoning_summary="ok",
+        subject="Great chat!",
+        html_body="<p>Thanks for our call today, talk soon!</p>",
+        status="sent",
+    )
+
+    result = evaluate_routing(state, THRESHOLDS)
+
+    assert result.requires_human_review is True
+    assert any("didn't complete" in r for r in result.review_reasons)
+
+
 def test_recorded_errors_require_review(sample_context):
     state = _base_state(sample_context)
     state.errors = ["Something went wrong"]

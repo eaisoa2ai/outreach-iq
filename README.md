@@ -162,10 +162,17 @@ model rather than trusting self-reported scores at face value.
 - **Secrets in `.env`.** Fine for local development; a real deployment would
   use a secrets manager (AWS Secrets Manager, Vault, etc.) instead of a
   dotenv file.
-- **No observability/tracing beyond the audit JSONL.** There's no
-  distributed tracing across agent calls or provider latency metrics —
-  useful for debugging a slow or flaky campaign in production, not included
-  here.
+- **Guardrails are keyword/pattern checks, not a content classifier.** They
+  catch the specific failure modes this pipeline can produce (an unfilled
+  template placeholder, an unauthorized offer, a claim about a call that
+  didn't happen) — see [Guardrails](#guardrails) below. A system generating
+  more open-ended content would want an LLM-based or fine-tuned classifier
+  in addition to fixed patterns, not instead of them.
+- **Tracing has no backend wired up by default.** Spans print to the console
+  out of the box (see [Observability](#observability)) — that's real
+  OpenTelemetry instrumentation, but nothing is aggregated, alerted on, or
+  queryable across runs until `OTEL_EXPORTER_OTLP_ENDPOINT` points at an
+  actual collector.
 
 ## Target production architecture
 
@@ -219,9 +226,11 @@ Getting from the current demo to this is additive, not a rewrite:
 4. **Move secrets from `.env` to a secrets manager** (AWS Secrets Manager,
    Vault) and inject them as environment variables at deploy time — the
    `Settings` class in `config.py` doesn't care where the values come from.
-5. **Add structured tracing** around each agent/tool call (OpenTelemetry or
-   similar) — the audit JSONL already captures *what* decision was made;
-   tracing would add *how long each step took and where it failed*.
+5. **Point tracing at a real collector.** The OpenTelemetry instrumentation
+   already exists (campaign, crew, and every provider call are real spans —
+   see [Observability](#observability)); this step is setting
+   `OTEL_EXPORTER_OTLP_ENDPOINT` and standing up the collector, not writing
+   new instrumentation.
 
 ## Data governance and compliance
 
@@ -283,6 +292,8 @@ outreach-iq/
 │   ├── models.py                 # every typed contract between agents
 │   ├── routing.py                # pure human-review routing logic
 │   ├── audit.py                  # append-only JSONL audit trail
+│   ├── guardrails.py             # content-safety checks on outgoing email
+│   ├── observability.py          # OpenTelemetry tracer setup
 │   ├── db/                       # SQLAlchemy schema, session, repositories
 │   ├── providers/                # VoiceProvider / EmailProvider + mock & real backends
 │   ├── agents/                   # the four CrewAI agents + their tasks/tools/prompts
@@ -303,7 +314,65 @@ outreach-iq/
 3. **Decision Agent** — polls the call to a terminal outcome (`completed` / `failed` / `did_not_pick` / `error`), pulls the transcript when applicable, and produces `CallAnalysis` with guidance for the email agent.
 4. **Email Agent** — drafts and sends a follow-up that matches exactly what happened, never a generic template regardless of outcome.
 
-After all four run, `evaluate_routing()` flags the campaign for human review if: any agent's confidence is below the configured floor, the customer had no phone number, the call errored out, the email failed to send, or any stage recorded an error.
+After all four run, `evaluate_routing()` flags the campaign for human review if: any agent's confidence is below the configured floor, the customer had no phone number, the call errored out, the email failed to send or was blocked by a guardrail, the email contradicts what the call actually did, or any stage recorded an error.
+
+## Guardrails
+
+An LLM agent with a tool that sends real email to real customers is exactly
+where a "just prompt it correctly" approach breaks down — the Email Agent's
+prompt already says "never reference a conversation that didn't happen," but
+a prompt is a request, not a control. `guardrails.py` backs that request
+with two checks that run regardless of what the LLM decides to do:
+
+- **Preventive — `check_outgoing_email_content`.** Runs *inside*
+  `send_email_tool`, before any provider (mock or real) is called. Blocks
+  the send outright (`status="blocked"`, nothing goes out) if the body is
+  suspiciously short or empty, the subject is missing, a template
+  placeholder like `{{customer_name}}` was left unfilled, or the text
+  contains an offer no one authorized (a refund, a discount code, "free
+  trial") — the kind of thing an LLM can produce if a customer's own
+  feedback text ends up read into its prompt and it treats that text as an
+  instruction rather than data.
+- **Detective — `check_email_matches_call_outcome`.** Runs afterward, in
+  `evaluate_routing()`, once both the sent email and the call analysis
+  exist. Flags (doesn't block — the email is already sent by this point) a
+  campaign where the email references "our call" or "our conversation" but
+  the call outcome wasn't `completed`.
+
+Both are plain functions over typed models — no LLM, no network — so every
+case in `tests/test_guardrails.py` is a direct input/output assertion, the
+same style as `routing.py`'s tests. They're intentionally narrow: fixed
+keyword/pattern checks that catch the specific failure modes *this*
+pipeline can produce, not a general-purpose content moderation system (see
+Limitations).
+
+## Observability
+
+Every campaign, the crew's execution, and every call to a
+`VoiceProvider`/`EmailProvider` is a real [OpenTelemetry](https://opentelemetry.io/)
+span — `outreachiq.campaign` → `crew.kickoff` → `voice.initiate_call` /
+`voice.wait_for_terminal_status` / `voice.get_transcript` / `email.send`,
+with attributes (customer id, conversation id, outcome, status) and
+exceptions recorded on the span, not just logged as text. Per-stage
+completion is marked with span events (`insight.completed`,
+`call.completed`, ...) via each CrewAI `Task`'s `callback`, so a single
+trace shows where time was actually spent across the four agents.
+
+By default spans print to the console (`ConsoleSpanExporter`) — zero
+external infrastructure, so this is inspectable the moment you run
+`main.py`. Setting `OTEL_EXPORTER_OTLP_ENDPOINT` switches to shipping spans
+to a real collector (Jaeger, Tempo, Honeycomb, ...) with no code changes:
+
+```bash
+uv sync --extra otel-otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces uv run python main.py --customer-id C100
+```
+
+This is deliberately kept separate from the audit trail in `audit.py`: the
+audit log answers *what decision was made and why* (for a human reviewing a
+campaign), tracing answers *how long each step took and where it failed*
+(for debugging the system itself). They're different audiences and neither
+one substitutes for the other.
 
 ## Running it
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from crewai import LLM, Agent, Task
 
 from outreachiq.agents.prompts import CALL_AGENT_BACKSTORY
@@ -19,7 +21,9 @@ def build_call_agent(llm: LLM) -> Agent:
     )
 
 
-def build_call_task(agent: Agent, profile: CustomerProfile, insight_task: Task) -> Task:
+def build_call_task(
+    agent: Agent, profile: CustomerProfile, insight_task: Task, on_complete: Callable | None = None
+) -> Task:
     if not profile.phone:
         description = f"""The customer {profile.name} has no phone number on file.
 Do not call the tool. Report status "skipped" with confidence 1.0 and a
@@ -42,4 +46,5 @@ outcome yourself, the next agent will determine that."""
         expected_output="A CallInitiationResult with status and conversation_id (if any).",
         output_pydantic=CallInitiationResult,
         context=[insight_task],
+        callback=on_complete,
     )
