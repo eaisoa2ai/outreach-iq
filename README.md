@@ -52,6 +52,121 @@ flowchart LR
     end
 ```
 
+### A single campaign run, step by step
+
+```mermaid
+sequenceDiagram
+    participant CLI as CLI / Gradio
+    participant Repo as CustomerRepository
+    participant Insight as Insight Agent
+    participant Call as Call Agent
+    participant Voice as VoiceProvider
+    participant Decision as Decision Agent
+    participant Email as Email Agent
+    participant Mail as EmailProvider
+    participant Route as evaluate_routing()
+    participant Audit as audit_trail.jsonl
+
+    CLI->>Repo: get_context(customer_id, days_back)
+    Repo-->>CLI: CustomerContext
+    CLI->>Insight: CustomerContext
+    Insight-->>Call: CallGuidance (via CrewAI task context)
+    Call->>Voice: initiate_call(name, phone, guidance)
+    Voice-->>Call: conversation_id, status
+    Call-->>Decision: CallInitiationResult
+    Decision->>Voice: wait_for_terminal_status(conversation_id)
+    Voice-->>Decision: outcome (completed/failed/did_not_pick/error)
+    Decision->>Voice: get_transcript(conversation_id)  [if completed]
+    Decision-->>Email: CallAnalysis
+    Email->>Mail: send_email(to, subject, html_body)
+    Mail-->>Email: status, message_id
+    Email-->>CLI: EmailOutcome
+    CLI->>Route: evaluate_routing(CampaignState, thresholds)
+    Route-->>CLI: requires_human_review, review_reasons
+    CLI->>Audit: write_audit_entry(...)
+    CLI->>Repo: CampaignRepository.save(state)
+```
+
+## System design and trade-offs
+
+**Sequential, not parallel, orchestration.** The four agents run in CrewAI's
+`Process.sequential`, not hierarchical or concurrent. This isn't a framework
+default I left in place — it's forced by the data dependency: you cannot
+write a truthful follow-up email before you know how the call actually went,
+and you cannot know that before the call has a terminal status. The cost is
+latency (each customer's campaign is a strict chain), but running multiple
+*customers'* campaigns concurrently is still possible — that would mean one
+`Crew` per customer, which the current `run_campaign()` boundary already
+supports; it just isn't wired up to a job queue yet (see Limitations).
+
+**Typed task outputs instead of shared mutable state.** An earlier version of
+this idea (and a common pattern in CrewAI tutorials) threads a single mutable
+dict through every tool call so each tool can read/write shared fields. That
+works but makes testing and reasoning about ordering harder, and it doesn't
+survive a process restart. Here, every `Task` declares `output_pydantic`, so
+CrewAI validates the LLM's structured output against a schema, and
+`workflow.py` assembles the final `CampaignState` by reading
+`task.output.pydantic` once at the end — no shared state object, no global
+mutation, and every intermediate result is independently serializable and
+testable.
+
+**Mock providers as the default, not an afterthought.** The trade-off here is
+explicit: mock behavior can drift from real vendor quirks (ElevenLabs'
+specific status strings, Twilio error codes, Gmail quota errors), so passing
+tests against the mock does not guarantee the real integration behaves
+identically — a manual smoke test against a real backend is still warranted
+before trusting it. What it buys in return: anyone can clone this repo and
+run the full four-agent pipeline, see a realistic distribution of call
+outcomes, and inspect a sent email, without ElevenLabs, Twilio, or Google
+credentials. Given this is a portfolio artifact meant to be read and run, not
+a paid service, that trade-off is the right one here.
+
+**SQLite, not Postgres.** Zero setup, and SQLAlchemy's Core/ORM layer means
+swapping `DATABASE_URL` to Postgres requires no code changes in
+`db/repository.py`. The trade-off: SQLite's single-writer model means
+concurrent campaign runs from multiple processes will serialize on writes,
+which is a real limitation for anything beyond a demo or single-user tool.
+
+**Human review is a terminal flag, not a resumable checkpoint.** When
+`evaluate_routing()` flags a campaign, the run still completes and is
+persisted with `requires_human_review=True` for a person to act on
+afterward — it does not pause mid-pipeline and wait for approval before, say,
+sending the email. A true interrupt-and-resume flow (stop before the risky
+step, wait for a human decision, then continue) is what a graph-based
+orchestrator like LangGraph is built for; CrewAI's sequential `Process`
+doesn't give you that checkpoint/resume primitive for free, and building it
+by hand was out of scope for what this project is demonstrating. Flagging a
+completed run for review — closer to how a real support/ops queue works — is
+a deliberate, honest scope cut, not an oversight.
+
+**Confidence is self-reported by the LLM, not calibrated.** Each agent is
+asked to state its own confidence, and `evaluate_routing()` treats that
+number as ground truth. It is not validated against a held-out set of known
+outcomes. That's a reasonable placeholder for a portfolio pipeline; a
+production system would want a calibration step (comparing stated confidence
+against actual downstream outcomes over time) or an independent verifier
+model rather than trusting self-reported scores at face value.
+
+## Limitations and possible extensions
+
+- **One customer per run.** `main.py` takes a single `--customer-id`; there's
+  no batch/nightly-campaign runner. Extending to a customer list would mean
+  wrapping `run_campaign()` in a queue (Celery/RQ/arq) and running many
+  `Crew` instances concurrently.
+- **No retry/backoff on provider calls.** A transient failure in a real
+  ElevenLabs or Gmail call today just becomes a recorded error and a
+  human-review flag; a production version would retry transient failures
+  before giving up.
+- **No auth on the Gradio dashboard.** It's a local demo tool, not something
+  to expose publicly as-is.
+- **Secrets in `.env`.** Fine for local development; a real deployment would
+  use a secrets manager (AWS Secrets Manager, Vault, etc.) instead of a
+  dotenv file.
+- **No observability/tracing beyond the audit JSONL.** There's no
+  distributed tracing across agent calls or provider latency metrics —
+  useful for debugging a slow or flaky campaign in production, not included
+  here.
+
 ## Project layout
 
 ```
