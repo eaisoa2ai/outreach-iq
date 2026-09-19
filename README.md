@@ -16,6 +16,11 @@ a follow-up email written to disk — runs end-to-end with nothing but an
 OpenAI key. Real backends (ElevenLabs + Twilio for calling, Gmail for email)
 are swapped in behind the exact same interface with one config flag.
 
+See [CASE_STUDY.md](CASE_STUDY.md) for how this architecture would actually
+get taken from this demo to a live client engagement — discovery, pilot,
+guardrail sign-off, phased rollout, and ongoing monitoring — using a retail
+scenario mapped step-by-step onto the code in this repo.
+
 ## Why this design
 
 | Decision | Reasoning |
