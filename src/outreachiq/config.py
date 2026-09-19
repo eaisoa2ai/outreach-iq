@@ -7,7 +7,11 @@ import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Deliberately cwd-based, not derived from __file__: this package is installed
+# non-editably in Docker (site-packages), where __file__-relative parents would
+# resolve outside the project entirely. Every entry point (main.py, scripts/*,
+# ui/app.py, the Docker WORKDIR) is run from the project root, so cwd is reliable.
+PROJECT_ROOT = Path.cwd()
 
 
 class Thresholds(BaseModel):

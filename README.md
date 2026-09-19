@@ -167,10 +167,115 @@ model rather than trusting self-reported scores at face value.
   useful for debugging a slow or flaky campaign in production, not included
   here.
 
+## Target production architecture
+
+What's implemented today is a single-process demo by design (see
+Limitations above). The diagram below is the architecture I'd stand up to
+run this for real, and every box maps to a boundary that already exists in
+the code — this is a matter of adding infrastructure around existing
+interfaces, not rewriting the pipeline.
+
+```mermaid
+flowchart TB
+    Ops[Ops / CS team] -->|reviews flagged campaigns| Dashboard
+    Scheduler[Nightly scheduler] -->|enqueue one job per customer| Queue[[Job queue<br/>SQS / Celery / arq]]
+
+    subgraph App["Application tier (stateless, horizontally scaled)"]
+        Dashboard[Dashboard behind SSO]
+        Worker1[Campaign worker]
+        Worker2[Campaign worker]
+        WorkerN[Campaign worker ...]
+    end
+
+    Queue --> Worker1
+    Queue --> Worker2
+    Queue --> WorkerN
+
+    Worker1 --> DB[(Postgres<br/>customers, engagement, campaigns)]
+    Worker1 --> Secrets[(Secrets manager<br/>API keys, OAuth tokens)]
+    Worker1 --> Obs[[Structured logs + tracing<br/>+ audit trail]]
+    Worker1 --> Providers
+
+    subgraph Providers["External providers (unchanged interface)"]
+        OpenAI[OpenAI]
+        Voice[ElevenLabs / Twilio]
+        Mail[Gmail / SES]
+    end
+
+    Dashboard --> DB
+```
+
+Getting from the current demo to this is additive, not a rewrite:
+
+1. **`DATABASE_URL` → Postgres.** No code change — `db/repository.py` and
+   `db/schema.py` already go through SQLAlchemy Core, not raw SQLite calls.
+2. **Wrap `run_campaign()` in a queue consumer.** The function is already a
+   clean, single-argument unit of work (`customer_id`); a worker just needs
+   to pull a job and call it. This is what turns "one customer per CLI
+   invocation" into "process the whole customer list nightly."
+3. **Put the Gradio dashboard behind SSO / a reverse proxy with auth** rather
+   than exposing it directly — it currently has none, by design, since it's
+   a local demo tool.
+4. **Move secrets from `.env` to a secrets manager** (AWS Secrets Manager,
+   Vault) and inject them as environment variables at deploy time — the
+   `Settings` class in `config.py` doesn't care where the values come from.
+5. **Add structured tracing** around each agent/tool call (OpenTelemetry or
+   similar) — the audit JSONL already captures *what* decision was made;
+   tracing would add *how long each step took and where it failed*.
+
+## Data governance and compliance
+
+This pipeline touches real personal data by nature — names, emails, phone
+numbers, and call transcripts, which can contain anything a customer says.
+That has consequences beyond code quality:
+
+- **Consent and opt-out.** Nothing in this project checks a do-not-call or
+  do-not-email list, or verifies the customer previously agreed to be
+  contacted this way. Any real deployment placing outbound calls needs that
+  check *before* the Call Agent runs — in the US this is a hard requirement
+  under TCPA, not an optional nicety.
+- **Right to erasure (GDPR/CCPA).** `CustomerRepository` and
+  `CampaignRepository` key everything off `customer_id`, so a delete-by-id
+  routine (purge profile, engagement, feedback, campaign records, and
+  matching audit entries) is straightforward to add — it just isn't wired
+  up to anything yet.
+- **Retention.** `logs/audit_trail.jsonl` and the campaign table currently
+  grow forever, including transcript text. A real deployment needs an
+  explicit retention window and a scheduled purge, not indefinite storage
+  of call content.
+- **Encryption.** API calls to OpenAI/ElevenLabs/Gmail are already
+  HTTPS-in-transit. At rest, SQLite has no built-in encryption — moving to
+  Postgres with disk-level encryption (the default on any managed cloud DB)
+  closes that gap as part of the same migration already described above.
+- **What's already in place:** the append-only audit trail
+  (`audit.py`) means every automated decision — including *why* a campaign
+  was or wasn't flagged for human review — is independently reconstructable,
+  which is exactly the kind of traceability compliance reviews ask for. That
+  part doesn't need to be bolted on later.
+
+## Cost model
+
+Mock providers make local development and CI free. Real usage has three
+independent cost drivers, and the point of listing them separately is that
+each one is controlled differently — plug in current vendor pricing rather
+than trusting any number here to stay accurate:
+
+| Driver | What drives it | Where it's controlled |
+|---|---|---|
+| LLM tokens (OpenAI) | 4 agent calls per campaign; prompt size scales with `days_back` (more engagement/feedback rows → longer prompts) | `thresholds.days_back_default`, and swapping `openai_model` for a cheaper tier |
+| Voice minutes (ElevenLabs/Twilio) | Only incurred for `completed` and `did_not_pick` outcomes reaching the provider — `failed`/`skipped` calls never connect | `thresholds.max_call_wait_seconds` bounds worst-case call length |
+| Email (Gmail/SES) | Effectively free at this volume — Gmail API has a generous free daily quota | N/A until sending at real marketing volume |
+
+The one architectural lever that matters most for cost at scale:
+`VOICE_PROVIDER=mock` and `EMAIL_PROVIDER=mock` cost nothing, so every test,
+every CI run, and every local development loop is free — only a deliberately
+configured production deployment ever touches a paid API.
+
 ## Project layout
 
 ```
 outreach-iq/
+├── Dockerfile                     # multi-stage build for the CLI/dashboard
 ├── main.py                       # CLI entry point
 ├── config/settings.yaml          # non-secret thresholds (confidence floor, timeouts, ...)
 ├── src/outreachiq/
@@ -226,6 +331,19 @@ pytest
 Nothing above needs ElevenLabs, Twilio, or Google credentials — `VOICE_PROVIDER` and
 `EMAIL_PROVIDER` default to `mock`. Simulated calls resolve instantly (no real polling
 delay) and follow-up emails are written as `.html` files to `./outbox`.
+
+### Running with Docker
+
+```bash
+docker build -t outreachiq .
+
+# seed the database into a named volume, then run a campaign
+docker run --rm -v outreachiq_data:/app/data outreachiq python scripts/seed_db.py
+docker run --rm --env-file .env -v outreachiq_data:/app/data outreachiq python main.py --customer-id C100
+
+# dashboard, exposed on localhost:7860
+docker run --rm -p 7860:7860 --env-file .env -v outreachiq_data:/app/data outreachiq
+```
 
 ### Switching to real providers
 
