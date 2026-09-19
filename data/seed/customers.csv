@@ -1,0 +1,19 @@
+customer_id,customer_name,customer_email,phone_number,date_joined,profession,field_of_interest
+C100,Leila Mehta,leila.mehta0@example.com,+16402387665,2026-05-01 14:21:26,Data Scientist,Data Science
+C101,Leila Murphy,leila.murphy1@example.com,+16668366722,2026-02-14 20:34:26,Learner,Big Data
+C102,Traci Rossi,traci.rossi2@example.com,+14585650756,2025-12-05 14:50:26,Product Manager,Data Engineering
+C103,Traci Chen,traci.chen3@example.com,+14530876844,2026-09-15 15:51:26,Software Engineer,Machine Learning
+C104,Amara Allen,amara.allen4@example.com,,2026-05-31 11:29:26,Learner,Data Engineering
+C105,Karan Petrov,karan.petrov5@example.com,+15639960595,2025-11-13 12:44:26,Learner,Data Engineering
+C106,Sofia Mehta,sofia.mehta6@example.com,+13625792787,2025-12-10 11:42:26,Product Manager,Machine Learning
+C107,Noah Smith,noah.smith7@example.com,+15026113008,2026-08-26 00:21:26,Data Analyst,Data Science
+C108,Diego Smith,diego.smith8@example.com,+15721519026,2026-03-08 13:06:26,Data Analyst,Big Data
+C109,Ivan Petrov,ivan.petrov9@example.com,+17194793134,2026-05-04 22:36:26,Learner,MLOps
+C110,Leila Allen,leila.allen10@example.com,+18589080583,2026-05-16 16:06:26,Software Engineer,Machine Learning
+C111,Grace Haddad,grace.haddad11@example.com,,2025-10-01 04:21:26,Data Analyst,Data Science
+C112,Traci Alvarez,traci.alvarez12@example.com,+16432836771,2026-04-10 09:18:26,Learner,Big Data
+C113,Grace Baker,grace.baker13@example.com,+13351531223,2025-10-18 06:10:26,Software Engineer,Big Data
+C114,Amara Allen,amara.allen14@example.com,+17354224376,2025-12-05 04:19:26,Product Manager,Data Engineering
+C115,Grace Baker,grace.baker15@example.com,+13715412119,2026-05-29 17:03:26,Software Engineer,Data Science
+C116,Yuki Brooks,yuki.brooks16@example.com,+15698408854,2026-07-02 01:25:26,Software Engineer,MLOps
+C117,Karan Iyer,karan.iyer17@example.com,+17934009634,2026-01-22 05:19:26,Product Manager,Data Science

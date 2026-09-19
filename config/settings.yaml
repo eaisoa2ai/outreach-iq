@@ -1,0 +1,7 @@
+# Non-secret operational thresholds. Credentials live in .env, never here.
+thresholds:
+  confidence_floor: 0.6          # any agent confidence below this -> human review
+  max_call_wait_seconds: 300     # give up polling a call after this long
+  call_poll_interval_seconds: 10 # how often to poll call status
+  no_pickup_after_seconds: 60    # still "initiated" after this long -> did_not_pick
+  days_back_default: 30          # engagement/feedback lookback window for a campaign

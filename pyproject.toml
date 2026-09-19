@@ -1,0 +1,50 @@
+[project]
+name = "outreachiq"
+version = "0.1.0"
+description = "Multi-agent AI system for personalized customer outreach — data-driven call guidance, voice calling, real-time outcome monitoring, and follow-up email, built with CrewAI, Pydantic, and a pluggable provider architecture."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "crewai>=0.152.0",
+    "openai>=1.98.0",
+    "pydantic[email]>=2.7",
+    "pydantic-settings>=2.4",
+    "sqlalchemy>=2.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "pandas>=2.0",
+    "gradio>=4.44",
+]
+
+[project.optional-dependencies]
+elevenlabs = ["elevenlabs>=2.8.1"]
+gmail = [
+    "google-auth",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+    "google-api-python-client",
+]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/outreachiq"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pycodestyle errors, Pyflakes, isort, and pyupgrade. Deliberately excludes
+# flake8-blind-except (BLE) — the top-level CLI/UI entry points intentionally
+# catch broad Exception at the boundary — and flake8-datetimez (DTZ), since
+# engagement/feedback timestamps are stored naive and compared naive on purpose.
+select = ["E4", "E7", "E9", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

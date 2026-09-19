@@ -1,0 +1,20 @@
+feedback_id,customer_id,course_title,question,answer,date_created
+F00001,C101,Building Data Pipelines,What would you like to see more of?,More real-world case studies.,2026-08-04 11:22:26
+F00002,C102,Natural Language Processing,Did the project meet your expectations?,"Yes, especially the deployment section.",2026-08-17 06:19:26
+F00003,C102,Time Series Forecasting,How would you rate the pacing of this course?,A bit fast in the middle sections.,2026-09-13 01:08:26
+F00004,C103,Intro to Machine Learning,How would you rate the pacing of this course?,A bit fast in the middle sections.,2026-08-28 16:55:26
+F00005,C104,Advanced SQL for Analytics,Any blockers you ran into?,Environment setup took longer than expected.,2026-08-13 23:08:26
+F00006,C105,Intro to Machine Learning,How would you rate the pacing of this course?,A bit fast in the middle sections.,2026-09-13 22:38:26
+F00007,C105,Advanced SQL for Analytics,How would you rate the pacing of this course?,A bit fast in the middle sections.,2026-08-26 03:00:26
+F00008,C107,Advanced SQL for Analytics,How would you rate the pacing of this course?,A bit fast in the middle sections.,2026-08-30 09:38:26
+F00009,C109,Advanced SQL for Analytics,What would you like to see more of?,More real-world case studies.,2026-08-07 18:13:26
+F00010,C110,Time Series Forecasting,Any blockers you ran into?,Environment setup took longer than expected.,2026-08-09 22:26:26
+F00011,C110,Advanced SQL for Analytics,What would you like to see more of?,More real-world case studies.,2026-09-07 08:34:26
+F00012,C112,Building Data Pipelines,Any blockers you ran into?,Environment setup took longer than expected.,2026-08-06 21:44:26
+F00013,C112,Advanced SQL for Analytics,Did the project meet your expectations?,"Yes, especially the deployment section.",2026-09-07 23:29:26
+F00014,C113,Time Series Forecasting,How would you rate the pacing of this course?,A bit fast in the middle sections.,2026-08-19 14:23:26
+F00015,C114,Building Data Pipelines,Did the project meet your expectations?,"Yes, especially the deployment section.",2026-09-04 14:34:26
+F00016,C115,Advanced SQL for Analytics,Any blockers you ran into?,Environment setup took longer than expected.,2026-08-28 12:40:26
+F00017,C115,Intro to Machine Learning,Did the project meet your expectations?,"Yes, especially the deployment section.",2026-08-27 01:03:26
+F00018,C116,Natural Language Processing,Did the project meet your expectations?,"Yes, especially the deployment section.",2026-09-17 17:39:26
+F00019,C117,Advanced SQL for Analytics,Did the project meet your expectations?,"Yes, especially the deployment section.",2026-09-16 17:57:26
